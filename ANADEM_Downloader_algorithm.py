@@ -252,7 +252,7 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
         self.status_total = 100.0 / n_etapas
 
         # ---- Clip direto via vsicurl (sem download do tile completo) ----
-        clips = self._clipar_tiles_direto(tiles_necessarios, tile_urls, caminho_shp_aoi, feedback)
+        clips = self._clipar_tiles_direto(tiles_necessarios, tile_urls, caminho_shp_aoi, area_interesse, feedback)
         if not clips:
             feedback.pushInfo('\nNenhum tile processado com sucesso.')
             return {}
@@ -386,15 +386,23 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
     # Clip direto via vsicurl (sem download do tile completo)
     # ------------------------------------------------------------------
 
-    def _clipar_tiles_direto(self, tiles, tile_urls, shp_aoi, feedback):
+    def _clipar_tiles_direto(self, tiles, tile_urls, shp_aoi, area_interesse, feedback):
         """Lê apenas a porção da ROI via HTTP range requests (requer tile COG)."""
         clips = []
         feedback.pushInfo('\nClipando tiles via vsicurl...')
+
+        # Assinatura espacial da AOI: garante que cache de áreas diferentes não colida
+        aoi_hash = (
+            f"{area_interesse.xMinimum():.4f}_{area_interesse.yMinimum():.4f}"
+            f"_{area_interesse.xMaximum():.4f}_{area_interesse.yMaximum():.4f}"
+        )
+        aoi_id = re.sub(r'[^0-9]', '', aoi_hash)
+
         for tile in tiles:
             if feedback.isCanceled():
                 return clips
 
-            clip_path = os.path.join(self.temp_dir, f'anadem_v1_{tile}_clip.tif')
+            clip_path = os.path.join(self.temp_dir, f'anadem_v1_{tile}_{aoi_id}_clip.tif')
             feedback.pushInfo(f'\nTile: {tile}')
 
             if os.path.exists(clip_path):
