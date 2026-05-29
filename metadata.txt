@@ -4,17 +4,19 @@
 name=ANADEM Downloader
 qgisMinimumVersion=3.16
 qgisMaximumVersion=4.99
-description=Baixa o MDE ANADEM v1 (30m) para uma área de interesse no território brasileiro
-version=1.0.0
+description=Baixa o MDE ANADEM v1 (30m) para uma área de interesse no território brasileiro e gera declividade
+version=1.1.0
 author=Clayton Igarashi
 email=geoigarashi@gmail.com
 
-about=Plugin para download automático do Modelo Digital de Elevação ANADEM v1 (resolução 30m, cobertura Brasil) a partir de uma área de interesse definida pelo usuário. Os tiles são selecionados pelo índice MGRS local (sem internet para a busca) e baixados apenas quando necessários, com cache em disco para reutilização. Saídas disponíveis: MDE com rampa de cores hipsométrica, Curvas de Nível com suavização TPI-ponderada e simbologia com curvas mestras/normais, ou ambas. Inclui overlay opcional de Hillshade.
+about=Plugin para download automático do Modelo Digital de Elevação ANADEM v1 (resolução 30m, cobertura Brasil) a partir de uma área de interesse definida pelo usuário. Os tiles são selecionados pelo índice MGRS local (sem internet para a busca) e baixados apenas quando necessários, com cache em disco para reutilização. Saídas disponíveis: MDE com rampa de cores hipsométrica, Curvas de Nível com suavização TPI-ponderada e simbologia com curvas mestras/normais, raster de Declividade Temática (estilos CAR, Embrapa, FAO, USDA), ou ambas. Inclui overlay opcional de Hillshade.
 
 tracker=
 repository=
 hasProcessingProvider=yes
 changelog=
+    Versão 1.1.0
+    - Adicionado suporte a geração de raster de Declividade Temática (CAR, Embrapa, FAO, USDA)
     Versão 1.0.0
     - Lançamento inicial
 

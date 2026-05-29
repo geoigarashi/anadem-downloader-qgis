@@ -29,6 +29,8 @@ from qgis.core import (
     QgsGeometry,
     QgsPalLayerSettings,
     QgsProcessingAlgorithm,
+    QgsProcessingContext,
+    QgsProcessingFeedback,
     QgsProcessingParameterAuthConfig,
     QgsProcessingParameterBoolean,
     QgsProcessingParameterColor,
@@ -59,7 +61,7 @@ from .gdal_calc import Calc
 SAIDA_MDE = 0
 SAIDA_CURVAS = 1
 SAIDA_AMBOS = 2
-AREA_MAXIMA_KM2 = 1000
+AREA_MAXIMA_KM2 = 10000
 
 
 class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
@@ -72,6 +74,8 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
     COR_CURVAS = 'COR_CURVAS'
     MUDAR_CRS = 'MUDAR_CRS'
     AUTENTIC = 'AUTENTIC'
+    GERAR_DECLIVIDADE = 'GERAR_DECLIVIDADE'
+    ESTILO_DECLIVIDADE = 'ESTILO_DECLIVIDADE'
 
     def __init__(self):
         super().__init__()
@@ -84,12 +88,12 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
     # Flags e metadados
     # ------------------------------------------------------------------
 
-    def flags(self):
+    def flags(self) -> int:
         if Qgis.QGIS_VERSION_INT >= 40000:
             return super().flags() | Qgis.ProcessingAlgorithmFlag.NoThreading
         return super().flags() | QgsProcessingAlgorithm.FlagNoThreading
 
-    def initAlgorithm(self, config):
+    def initAlgorithm(self, config: dict | None = None) -> None:
         self.addParameter(
             QgsProcessingParameterExtent(
                 self.AREA_INTERESSE,
@@ -175,11 +179,35 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
             )
         )
 
+        self.addParameter(
+            QgsProcessingParameterBoolean(
+                name=self.GERAR_DECLIVIDADE,
+                description=self.tr('Criar raster de declividade'),
+                defaultValue=False,
+                optional=False,
+            )
+        )
+
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                name=self.ESTILO_DECLIVIDADE,
+                description=self.tr('Simbologia e unidade da declividade'),
+                options=[
+                    self.tr('Sem estilo'),
+                    self.tr('Declividade FAO (%)'),
+                    self.tr('Declividade Embrapa (%)'),
+                    self.tr('Declividade CAR (°)'),
+                ],
+                defaultValue=3,  # Padrão: CAR (°)
+                optional=False,
+            )
+        )
+
     # ------------------------------------------------------------------
     # Algoritmo principal
     # ------------------------------------------------------------------
 
-    def processAlgorithm(self, parameters, context, feedback):
+    def processAlgorithm(self, parameters: dict, context: QgsProcessingContext, feedback: QgsProcessingFeedback) -> dict:
         self.status_total = 0.0
         self.progresso = 0.0
         os.makedirs(self.temp_dir, exist_ok=True)
@@ -202,6 +230,8 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
         suavizacao = ['Nenhum', 'Baixo', 'Médio', 'Alto'][suavizacao_idx]
         cor_curva = self.parameterAsColor(parameters, self.COR_CURVAS, context)
         mudar_crs = self.parameterAsBool(parameters, self.MUDAR_CRS, context)
+        gerar_declividade = self.parameterAsBool(parameters, self.GERAR_DECLIVIDADE, context)
+        estilo_declividade = self.parameterAsEnum(parameters, self.ESTILO_DECLIVIDADE, context)
 
         gerar_mde = saida in (SAIDA_MDE, SAIDA_AMBOS)
         gerar_curvas = saida in (SAIDA_CURVAS, SAIDA_AMBOS)
@@ -248,7 +278,7 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
             return {}
 
         # ---- Progresso ----
-        n_etapas = 4 + len(tiles_necessarios) + (2 if gerar_curvas else 0)
+        n_etapas = 4 + len(tiles_necessarios) + (2 if gerar_curvas else 0) + (1 if gerar_declividade else 0)
         self.status_total = 100.0 / n_etapas
 
         # ---- Clip direto via vsicurl (sem download do tile completo) ----
@@ -306,6 +336,12 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
                 merged_curvas, caminho_shp_aoi, intervalo, cor_curva,
                 epsg_utm, context, feedback)
 
+        slope_layer = None
+        if gerar_declividade:
+            slope_layer = self._preparar_declividade(merged_path, estilo_declividade, feedback)
+            self.progresso += 1
+            feedback.setProgress(int(self.progresso * self.status_total))
+
         # ---- Reprojetar projeto (depois de todo GDAL, antes das camadas) ----
         if mudar_crs:
             novo_crs = QgsCoordinateReferenceSystem(f'EPSG:{epsg_utm}')
@@ -314,7 +350,7 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
                 f'\nCRS do projeto alterado para EPSG:{epsg_utm} '
                 f'(SIRGAS 2000 UTM Sul — zona {epsg_utm - 31960}S)')
 
-        # ---- Inserir camadas (ordem: Hillshade→MDE→Curvas = base→topo) ----
+        # ---- Inserir camadas (ordem: Hillshade→MDE→Declividade→Curvas = base→topo) ----
         if hs_layer and hs_layer.isValid():
             QgsProject.instance().addMapLayer(hs_layer)
             feedback.pushInfo('  → Overlay Hillshade adicionado')
@@ -328,6 +364,10 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
                     iface.layerTreeView().refreshLayerSymbology(dem_layer.id())
             except Exception:
                 pass
+
+        if slope_layer and slope_layer.isValid():
+            QgsProject.instance().addMapLayer(slope_layer)
+            feedback.pushInfo('  → Raster de Declividade adicionado ao projeto')
 
         if curvas_layer and curvas_layer.isValid():
             QgsProject.instance().addMapLayer(curvas_layer)
@@ -413,7 +453,7 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
                 vsicurl_path = f'/vsicurl/{url}'
                 feedback.pushInfo(f'  → clipping via vsicurl: {url}')
                 try:
-                    ds = gdal.Warp(
+                    _ds = gdal.Warp(
                         clip_path,
                         vsicurl_path,
                         cutlineDSName=shp_aoi,
@@ -424,7 +464,7 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
                         format='GTiff',
                         callback=self._callback_gdal(feedback),
                     )
-                    ds = None
+                    _ds = None
                     if os.path.exists(clip_path):
                         size_mb = os.path.getsize(clip_path) / 1_048_576
                         feedback.pushInfo(f'  → salvo ({size_mb:.1f} MB da ROI)')
@@ -900,7 +940,7 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
     def groupId(self):
         return ''
 
-    def shortHelpString(self):
+    def shortHelpString(self) -> str:
         icon_path = os.path.join(os.path.dirname(__file__), 'icon.png').replace('\\', '/')
         return (
             f'<p align="center"><img src="file:///{icon_path}" width="72" height="72"/></p>'
@@ -912,6 +952,11 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
                 '• Curvas de Nível: vetores com suavização TPI-ponderada, '
                 'curvas mestras e normais, rótulos com máscara.\n\n'
                 '• MDE + Curvas de Nível: ambas as saídas.\n\n'
+                '• Declividade: raster de declividade temática gerado a partir do MDE. '
+                'Estilos de simbologia disponíveis:\n'
+                '  - FAO (%): classificação de declividade em porcentagem seguindo o padrão FAO.\n'
+                '  - Embrapa (%): classificação de declividade em porcentagem conforme a Embrapa.\n'
+                '  - CAR (°): classificação em graus (°), com destaque para encostas de APP (&gt; 45°).\n\n'
                 'Os tiles são selecionados localmente pelo índice MGRS '
                 '(sem consulta à internet) e armazenados em cache após o '
                 'primeiro download, reduzindo o consumo de dados nas '
@@ -919,8 +964,183 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
             )
         )
 
-    def tr(self, string):
+    def tr(self, string: str) -> str:
         return QCoreApplication.translate('Processing', string)
+
+    def _preparar_declividade(self, merged_path: str, estilo_idx: int, feedback: QgsProcessingFeedback) -> QgsRasterLayer | None:
+        """Calcula a declividade e gera o arquivo de estilo QML correspondente.
+
+        Args:
+            merged_path: Caminho para o MDE UTM mesclado.
+            estilo_idx: Índice do estilo de declividade selecionado.
+            feedback: Objeto de feedback para logs e progresso.
+
+        Returns:
+            Camada QgsRasterLayer configurada com a declividade ou None em caso de falha.
+        """
+        from pathlib import Path
+        feedback.pushInfo('\nPreparando camada de Declividade...')
+
+        as_percent = estilo_idx != 3  # Apenas o estilo CAR usa graus
+
+        temp_dir_path = Path(self.temp_dir)
+        slope_path = temp_dir_path / 'slope.tif'
+
+        # Remove arquivo anterior se existir para evitar erros do gdal.DEMProcessing
+        if slope_path.exists():
+            try:
+                slope_path.unlink()
+            except Exception:
+                pass
+
+        # Executar gdal.DEMProcessing
+        unit_str = 'porcentagem' if as_percent else 'graus'
+        feedback.pushInfo(f'  → Calculando declividade em {unit_str}...')
+
+        try:
+            options = gdal.DEMProcessingOptions(
+                slopeFormat='percent' if as_percent else 'degree',
+                computeEdges=True
+            )
+            _ds = gdal.DEMProcessing(str(slope_path), merged_path, 'slope', options=options)
+            _ds = None  # Fecha o arquivo
+        except Exception as e:
+            feedback.pushInfo(f'  ❌ Erro ao calcular declividade via GDAL: {e}')
+            return None
+
+        if not slope_path.exists():
+            feedback.pushInfo('  ❌ Arquivo de declividade não foi gerado.')
+            return None
+
+        # Aplicar estilo QML se selecionado
+        estilo_nomes = [
+            'Sem estilo',
+            'FAO (%)',
+            'Embrapa (%)',
+            'CAR (°)'
+        ]
+        estilo_label = estilo_nomes[estilo_idx]
+
+        qml_path = slope_path.with_suffix('.qml')
+
+        # Se um estilo foi selecionado, escreve o arquivo QML e carrega na camada
+        if estilo_idx > 0:
+            qml_templates = {
+                1: self._qml_slope_fao,
+                2: self._qml_slope_embrapa,
+                3: self._qml_slope_car
+            }
+            template_func = qml_templates.get(estilo_idx)
+            if template_func:
+                try:
+                    qml_path.write_text(template_func(), encoding='utf-8')
+                except Exception as e:
+                    feedback.pushInfo(f'  ⚠️ Erro ao gravar arquivo de estilo QML: {e}')
+
+        slope_layer = QgsRasterLayer(str(slope_path), f'ANADEM v1 — Declividade ({estilo_label})')
+        if not slope_layer.isValid():
+            feedback.pushInfo('  ❌ Erro ao carregar camada de declividade no QGIS.')
+            return None
+
+        if estilo_idx > 0 and qml_path.exists():
+            slope_layer.loadNamedStyle(str(qml_path))
+            slope_layer.triggerRepaint()
+
+        return slope_layer
+
+    @staticmethod
+    def _qml_slope_car() -> str:
+        """Retorna o template QML para o estilo CAR/Código Florestal (graus)."""
+        return (
+            "<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>\n"
+            "<qgis styleCategories=\"Symbology\" version=\"3.44.8-Solothurn\">\n"
+            "  <pipe>\n"
+            "    <provider>\n"
+            "      <resampling zoomedOutResamplingMethod=\"nearestNeighbour\" maxOversampling=\"2\" enabled=\"false\" zoomedInResamplingMethod=\"nearestNeighbour\"/>\n"
+            "    </provider>\n"
+            "    <rasterrenderer nodataColor=\"\" alphaBand=\"-1\" band=\"1\" opacity=\"1\" type=\"singlebandpseudocolor\" classificationMax=\"90\" classificationMin=\"0\">\n"
+            "      <rasterTransparency/>\n"
+            "      <rastershader>\n"
+            "        <colorrampshader minimumValue=\"0\" labelPrecision=\"2\" clip=\"0\" maximumValue=\"90\" colorRampType=\"DISCRETE\" classificationMode=\"2\">\n"
+            "          <item label=\"0° – 25° (Baixa a moderada declividade)\" color=\"#1a9850\" alpha=\"255\" value=\"25\"/>\n"
+            "          <item label=\"25° – 45° (Alta declividade / atenção ambiental)\" color=\"#fee08b\" alpha=\"255\" value=\"45\"/>\n"
+            "          <item label=\"&gt; 45° (APP - Encosta com declividade superior a 45°)\" color=\"#d73027\" alpha=\"255\" value=\"inf\"/>\n"
+            "        </colorrampshader>\n"
+            "      </rastershader>\n"
+            "    </rasterrenderer>\n"
+            "    <brightnesscontrast brightness=\"0\" gamma=\"1\" contrast=\"0\"/>\n"
+            "    <huesaturation colorizeStrength=\"100\" invertColors=\"0\" colorizeBlue=\"128\" colorizeRed=\"255\" colorizeGreen=\"128\" colorizeOn=\"0\" grayscaleMode=\"0\" saturation=\"0\"/>\n"
+            "    <rasterresampler maxOversampling=\"2\"/>\n"
+            "  </pipe>\n"
+            "  <blendMode>0</blendMode>\n"
+            "</qgis>\n"
+        )
+
+    @staticmethod
+    def _qml_slope_embrapa() -> str:
+        """Retorna o template QML para o estilo Embrapa (porcentagem)."""
+        return (
+            "<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>\n"
+            "<qgis styleCategories=\"Symbology\" version=\"3.44.8-Solothurn\">\n"
+            "  <pipe>\n"
+            "    <provider>\n"
+            "      <resampling zoomedOutResamplingMethod=\"nearestNeighbour\" maxOversampling=\"2\" enabled=\"false\" zoomedInResamplingMethod=\"nearestNeighbour\"/>\n"
+            "    </provider>\n"
+            "    <rasterrenderer nodataColor=\"\" alphaBand=\"-1\" band=\"1\" opacity=\"1\" type=\"singlebandpseudocolor\" classificationMax=\"900\" classificationMin=\"3\">\n"
+            "      <rasterTransparency/>\n"
+            "      <rastershader>\n"
+            "        <colorrampshader minimumValue=\"3\" labelPrecision=\"4\" clip=\"0\" maximumValue=\"500\" colorRampType=\"DISCRETE\" classificationMode=\"2\">\n"
+            "          <item label=\"0% – 3% (Plano)\" color=\"#286fa4\" alpha=\"255\" value=\"3\"/>\n"
+            "          <item label=\"3% - 8% (Suave ondulado)\" color=\"#a2f9d0\" alpha=\"255\" value=\"8\"/>\n"
+            "          <item label=\"8% - 20% (Ondulado)\" color=\"#4cc64d\" alpha=\"255\" value=\"20\"/>\n"
+            "          <item label=\"20% - 45% (Forte ondulado)\" color=\"#f1eb7a\" alpha=\"255\" value=\"45\"/>\n"
+            "          <item label=\"45% - 75% (Montanhoso)\" color=\"#ffae5d\" alpha=\"255\" value=\"75\"/>\n"
+            "          <item label=\"&gt; 75% (Escarpado)\" color=\"#b11011\" alpha=\"255\" value=\"inf\"/>\n"
+            "        </colorrampshader>\n"
+            "      </rastershader>\n"
+            "    </rasterrenderer>\n"
+            "    <brightnesscontrast brightness=\"0\" gamma=\"1\" contrast=\"0\"/>\n"
+            "    <huesaturation colorizeStrength=\"100\" invertColors=\"0\" colorizeBlue=\"128\" colorizeRed=\"255\" colorizeGreen=\"128\" colorizeOn=\"0\" grayscaleMode=\"0\" saturation=\"0\"/>\n"
+            "    <rasterresampler maxOversampling=\"2\"/>\n"
+            "  </pipe>\n"
+            "  <blendMode>0</blendMode>\n"
+            "</qgis>\n"
+        )
+
+    @staticmethod
+    def _qml_slope_fao() -> str:
+        """Retorna o template QML para o estilo FAO (porcentagem)."""
+        return (
+            "<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>\n"
+            "<qgis styleCategories=\"Symbology\" version=\"3.44.8-Solothurn\">\n"
+            "  <pipe>\n"
+            "    <provider>\n"
+            "      <resampling zoomedOutResamplingMethod=\"nearestNeighbour\" maxOversampling=\"2\" enabled=\"false\" zoomedInResamplingMethod=\"nearestNeighbour\"/>\n"
+            "    </provider>\n"
+            "    <rasterrenderer nodataColor=\"\" alphaBand=\"-1\" band=\"1\" opacity=\"1\" type=\"singlebandpseudocolor\" classificationMax=\"60\" classificationMin=\"0\">\n"
+            "      <rasterTransparency/>\n"
+            "      <rastershader>\n"
+            "        <colorrampshader minimumValue=\"0\" labelPrecision=\"4\" clip=\"0\" maximumValue=\"60\" colorRampType=\"DISCRETE\" classificationMode=\"2\">\n"
+            "          <item label=\"0% – 0.2% (Flat)\" color=\"#82a4ff\" alpha=\"255\" value=\"0.2\"/>\n"
+            "          <item label=\"0.2% – 0.5% (Level)\" color=\"#66bd63\" alpha=\"255\" value=\"0.5\"/>\n"
+            "          <item label=\"0.5% – 1.0% (Nearly level)\" color=\"#a6d96a\" alpha=\"255\" value=\"1\"/>\n"
+            "          <item label=\"1.0% – 2.0% (Very gently sloping)\" color=\"#d9ef8b\" alpha=\"255\" value=\"2\"/>\n"
+            "          <item label=\"2% – 5% (Gently sloping)\" color=\"#ffffbf\" alpha=\"255\" value=\"5\"/>\n"
+            "          <item label=\"5% – 10% (Sloping)\" color=\"#fee08b\" alpha=\"255\" value=\"10\"/>\n"
+            "          <item label=\"10% – 15% (Strongly sloping)\" color=\"#fdae61\" alpha=\"255\" value=\"15\"/>\n"
+            "          <item label=\"15% – 30% (Moderately steep)\" color=\"#f46d43\" alpha=\"255\" value=\"30\"/>\n"
+            "          <item label=\"30% – 60% (Steep)\" color=\"#d73027\" alpha=\"255\" value=\"60\"/>\n"
+            "          <item label=\"&gt; 60% (Very steep)\" color=\"#7f0000\" alpha=\"255\" value=\"inf\"/>\n"
+            "        </colorrampshader>\n"
+            "      </rastershader>\n"
+            "    </rasterrenderer>\n"
+            "    <brightnesscontrast brightness=\"0\" gamma=\"1\" contrast=\"0\"/>\n"
+            "    <huesaturation colorizeStrength=\"100\" invertColors=\"0\" colorizeBlue=\"128\" colorizeRed=\"255\" colorizeGreen=\"128\" colorizeOn=\"0\" grayscaleMode=\"0\" saturation=\"0\"/>\n"
+            "    <rasterresampler maxOversampling=\"2\"/>\n"
+            "  </pipe>\n"
+            "  <blendMode>0</blendMode>\n"
+            "</qgis>\n"
+        )
 
     def createInstance(self):
         return ANADEMDownloaderAlgorithm()

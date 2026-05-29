@@ -38,7 +38,7 @@ Em vez de baixar tiles completos de centenas de megabytes, o plugin faz **stream
 
 | Parâmetro | Tipo | Descrição |
 |---|---|---|
-| **Área de Interesse** | Extent | Delimitação retangular da AOI (máximo: 1.000 km² por execução). |
+| **Área de Interesse** | Extent | Delimitação retangular da AOI (máximo: 10.000 km² por execução). |
 | **Saída desejada** | Enum | `MDE`, `Curvas de Nível` ou `MDE + Curvas de Nível`. |
 | **Adicionar overlay de Hillshade** | Boolean | Computa e sobrepõe o sombreamento analítico sobre o MDE hipsométrico. |
 | **Intervalo entre curvas (m)** | Integer | Equidistância vertical em metros (padrão: 10 m; mín: 1 m; máx: 1.000 m). |
