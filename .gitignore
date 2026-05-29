@@ -1,0 +1,16 @@
+# Graphify knowledge graph (artefato local de análise)
+graphify-out/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
