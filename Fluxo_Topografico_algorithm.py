@@ -76,6 +76,7 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
     AUTENTIC = 'AUTENTIC'
     GERAR_DECLIVIDADE = 'GERAR_DECLIVIDADE'
     ESTILO_DECLIVIDADE = 'ESTILO_DECLIVIDADE'
+    DECLIVIDADE_CATEGORICA = 'DECLIVIDADE_CATEGORICA'
 
     def __init__(self):
         super().__init__()
@@ -203,6 +204,15 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
             )
         )
 
+        self.addParameter(
+            QgsProcessingParameterBoolean(
+                name=self.DECLIVIDADE_CATEGORICA,
+                description=self.tr('Classificar raster (declividade categórica)'),
+                defaultValue=False,
+                optional=False,
+            )
+        )
+
     # ------------------------------------------------------------------
     # Algoritmo principal
     # ------------------------------------------------------------------
@@ -232,6 +242,7 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
         mudar_crs = self.parameterAsBool(parameters, self.MUDAR_CRS, context)
         gerar_declividade = self.parameterAsBool(parameters, self.GERAR_DECLIVIDADE, context)
         estilo_declividade = self.parameterAsEnum(parameters, self.ESTILO_DECLIVIDADE, context)
+        declividade_categorica = self.parameterAsBool(parameters, self.DECLIVIDADE_CATEGORICA, context)
 
         gerar_mde = saida in (SAIDA_MDE, SAIDA_AMBOS)
         gerar_curvas = saida in (SAIDA_CURVAS, SAIDA_AMBOS)
@@ -338,7 +349,9 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
 
         slope_layer = None
         if gerar_declividade:
-            slope_layer = self._preparar_declividade(merged_path, estilo_declividade, feedback)
+            slope_layer = self._preparar_declividade(
+                merged_path, estilo_declividade, declividade_categorica, feedback
+            )
             self.progresso += 1
             feedback.setProgress(int(self.progresso * self.status_total))
 
@@ -350,14 +363,22 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
                 f'\nCRS do projeto alterado para EPSG:{epsg_utm} '
                 f'(SIRGAS 2000 UTM Sul — zona {epsg_utm - 31960}S)')
 
-        # ---- Inserir camadas (ordem: Hillshade→MDE→Declividade→Curvas = base→topo) ----
+        # ---- Inserir camadas agrupadas (ordem final: Curvas→Declividade→MDE→Hillshade = topo→base) ----
+        root = QgsProject.instance().layerTreeRoot()
+        group_name = self.tr('Resultados do Fluxo Topográfico')
+        group = root.findGroup(group_name)
+        if not group:
+            group = root.insertGroup(0, group_name)
+
         if hs_layer and hs_layer.isValid():
-            QgsProject.instance().addMapLayer(hs_layer)
-            feedback.pushInfo('  → Overlay Hillshade adicionado')
+            QgsProject.instance().addMapLayer(hs_layer, False)
+            group.insertLayer(0, hs_layer)
+            feedback.pushInfo('  → Overlay Hillshade adicionado ao grupo')
 
         if dem_layer and dem_layer.isValid():
-            QgsProject.instance().addMapLayer(dem_layer)
-            feedback.pushInfo('  → MDE adicionado ao projeto')
+            QgsProject.instance().addMapLayer(dem_layer, False)
+            group.insertLayer(0, dem_layer)
+            feedback.pushInfo('  → MDE adicionado ao grupo')
             try:
                 from qgis.utils import iface
                 if iface is not None:
@@ -366,12 +387,14 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
                 pass
 
         if slope_layer and slope_layer.isValid():
-            QgsProject.instance().addMapLayer(slope_layer)
-            feedback.pushInfo('  → Raster de Declividade adicionado ao projeto')
+            QgsProject.instance().addMapLayer(slope_layer, False)
+            group.insertLayer(0, slope_layer)
+            feedback.pushInfo('  → Raster de Declividade adicionado ao grupo')
 
         if curvas_layer and curvas_layer.isValid():
-            QgsProject.instance().addMapLayer(curvas_layer)
-            feedback.pushInfo('  → Curvas de Nível adicionadas')
+            QgsProject.instance().addMapLayer(curvas_layer, False)
+            group.insertLayer(0, curvas_layer)
+            feedback.pushInfo('  → Curvas de Nível adicionadas ao grupo')
 
         return {}
 
@@ -942,8 +965,12 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
 
     def shortHelpString(self) -> str:
         icon_path = os.path.join(os.path.dirname(__file__), 'icon.png').replace('\\', '/')
+        logo_path = os.path.join(os.path.dirname(__file__), 'Logo-GEO-HQ.svg').replace('\\', '/')
         return (
-            f'<p align="center"><img src="file:///{icon_path}" width="72" height="72"/></p>'
+            f'<p align="center">'
+            f'<img src="file:///{icon_path}" height="72" style="vertical-align: middle; margin-right: 20px;"/>'
+            f'<img src="file:///{logo_path}" height="72" style="vertical-align: middle;"/>'
+            f'</p>'
             + self.tr(
                 'Baixa tiles do MDE ANADEM v1 (30m, Brasil) para uma área de '
                 'interesse e gera as saídas selecionadas:\n\n'
@@ -967,16 +994,23 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
     def tr(self, string: str) -> str:
         return QCoreApplication.translate('Processing', string)
 
-    def _preparar_declividade(self, merged_path: str, estilo_idx: int, feedback: QgsProcessingFeedback) -> QgsRasterLayer | None:
+    def _preparar_declividade(
+        self,
+        merged_path: str,
+        estilo_idx: int,
+        declividade_categorica: bool,
+        feedback: QgsProcessingFeedback
+    ) -> QgsRasterLayer | None:
         """Calcula a declividade e gera o arquivo de estilo QML correspondente.
 
         Args:
             merged_path: Caminho para o MDE UTM mesclado.
             estilo_idx: Índice do estilo de declividade selecionado.
+            declividade_categorica: Se True, o raster gerado será reclassificado fisicamente.
             feedback: Objeto de feedback para logs e progresso.
 
         Returns:
-            Camada QgsRasterLayer configurada com a declividade ou None em caso de falha.
+            QgsRasterLayer | None: Camada QgsRasterLayer configurada com a declividade ou None em caso de falha.
         """
         from pathlib import Path
         feedback.pushInfo('\nPreparando camada de Declividade...')
@@ -985,31 +1019,81 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
 
         temp_dir_path = Path(self.temp_dir)
         slope_path = temp_dir_path / 'slope.tif'
+        raw_slope_path = temp_dir_path / 'slope_raw.tif'
 
-        # Remove arquivo anterior se existir para evitar erros do gdal.DEMProcessing
-        if slope_path.exists():
-            try:
-                slope_path.unlink()
-            except Exception:
-                pass
+        # Remove arquivos anteriores se existirem
+        for p in (slope_path, raw_slope_path):
+            if p.exists():
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
 
         # Executar gdal.DEMProcessing
         unit_str = 'porcentagem' if as_percent else 'graus'
         feedback.pushInfo(f'  → Calculando declividade em {unit_str}...')
+
+        # Se for categórica e estilo selecionado, a saída intermediária será slope_raw.tif
+        usar_reclassificacao = declividade_categorica and estilo_idx > 0
+        dem_proc_out = raw_slope_path if usar_reclassificacao else slope_path
 
         try:
             options = gdal.DEMProcessingOptions(
                 slopeFormat='percent' if as_percent else 'degree',
                 computeEdges=True
             )
-            _ds = gdal.DEMProcessing(str(slope_path), merged_path, 'slope', options=options)
+            _ds = gdal.DEMProcessing(str(dem_proc_out), merged_path, 'slope', options=options)
             _ds = None  # Fecha o arquivo
         except Exception as e:
             feedback.pushInfo(f'  ❌ Erro ao calcular declividade via GDAL: {e}')
             return None
 
-        if not slope_path.exists():
+        if not dem_proc_out.exists():
             feedback.pushInfo('  ❌ Arquivo de declividade não foi gerado.')
+            return None
+
+        # Reclassificação categórica se ativada
+        if usar_reclassificacao:
+            feedback.pushInfo('  → Reclassificando raster de declividade para categórico...')
+            try:
+                if estilo_idx == 1:
+                    # FAO: 10 classes
+                    expr = (
+                        "(A <= 0.2)*1 + ((A > 0.2) & (A <= 0.5))*2 + ((A > 0.5) & (A <= 1))*3 "
+                        "+ ((A > 1) & (A <= 2))*4 + ((A > 2) & (A <= 5))*5 + ((A > 5) & (A <= 10))*6 "
+                        "+ ((A > 10) & (A <= 15))*7 + ((A > 15) & (A <= 30))*8 + ((A > 30) & (A <= 60))*9 "
+                        "+ (A > 60)*10"
+                    )
+                elif estilo_idx == 2:
+                    # Embrapa: 6 classes
+                    expr = (
+                        "(A <= 3)*1 + ((A > 3) & (A <= 8))*2 + ((A > 8) & (A <= 20))*3 "
+                        "+ ((A > 20) & (A <= 45))*4 + ((A > 45) & (A <= 75))*5 + (A > 75)*6"
+                    )
+                else:
+                    # CAR: 3 classes
+                    expr = "(A <= 25)*1 + ((A > 25) & (A <= 45))*2 + (A > 45)*3"
+
+                Calc(
+                    calc=expr,
+                    A=str(raw_slope_path),
+                    outfile=str(slope_path),
+                    NoDataValue=-32768,
+                    type='Byte',  # Salva como Byte/Inteiro de 8 bits para raster categórico leve
+                    overwrite=True
+                )
+            except Exception as e:
+                feedback.pushInfo(f'  ❌ Erro na reclassificação via gdal_calc: {e}')
+                return None
+            finally:
+                if raw_slope_path.exists():
+                    try:
+                        raw_slope_path.unlink()
+                    except Exception:
+                        pass
+
+        if not slope_path.exists():
+            feedback.pushInfo('  ❌ Arquivo de declividade reclassificado não foi gerado.')
             return None
 
         # Aplicar estilo QML se selecionado
@@ -1033,7 +1117,7 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
             template_func = qml_templates.get(estilo_idx)
             if template_func:
                 try:
-                    qml_path.write_text(template_func(), encoding='utf-8')
+                    qml_path.write_text(template_func(usar_reclassificacao), encoding='utf-8')
                 except Exception as e:
                     feedback.pushInfo(f'  ⚠️ Erro ao gravar arquivo de estilo QML: {e}')
 
@@ -1049,8 +1133,39 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
         return slope_layer
 
     @staticmethod
-    def _qml_slope_car() -> str:
-        """Retorna o template QML para o estilo CAR/Código Florestal (graus)."""
+    def _qml_slope_car(categorico: bool = False) -> str:
+        """Retorna o template QML para o estilo CAR/Código Florestal (graus).
+
+        Args:
+            categorico: Se True, gera o QML com renderizador "paletted" (valores únicos).
+
+        Returns:
+            str: Conteúdo do arquivo de estilo QML formatado em XML.
+        """
+        if categorico:
+            return (
+                "<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>\n"
+                "<qgis styleCategories=\"Symbology\" version=\"3.44.8-Solothurn\">\n"
+                "  <pipe>\n"
+                "    <provider>\n"
+                "      <resampling zoomedOutResamplingMethod=\"nearestNeighbour\" maxOversampling=\"2\" enabled=\"false\" zoomedInResamplingMethod=\"nearestNeighbour\"/>\n"
+                "    </provider>\n"
+                "    <rasterrenderer nodataColor=\"\" alphaBand=\"-1\" band=\"1\" opacity=\"1\" type=\"paletted\">\n"
+                "      <rasterTransparency/>\n"
+                "      <colorPalette>\n"
+                "        <paletteEntry label=\"0° – 25° (Baixa a moderada declividade)\" color=\"#1a9850\" alpha=\"255\" value=\"1\"/>\n"
+                "        <paletteEntry label=\"25° – 45° (Alta declividade / atenção ambiental)\" color=\"#fee08b\" alpha=\"255\" value=\"2\"/>\n"
+                "        <paletteEntry label=\"&gt; 45° (APP - Encosta com declividade superior a 45°)\" color=\"#d73027\" alpha=\"255\" value=\"3\"/>\n"
+                "      </colorPalette>\n"
+                "    </rasterrenderer>\n"
+                "    <brightnesscontrast brightness=\"0\" gamma=\"1\" contrast=\"0\"/>\n"
+                "    <huesaturation colorizeStrength=\"100\" invertColors=\"0\" colorizeBlue=\"128\" colorizeRed=\"255\" colorizeGreen=\"128\" colorizeOn=\"0\" grayscaleMode=\"0\" saturation=\"0\"/>\n"
+                "    <rasterresampler maxOversampling=\"2\"/>\n"
+                "  </pipe>\n"
+                "  <blendMode>0</blendMode>\n"
+                "</qgis>\n"
+            )
+
         return (
             "<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>\n"
             "<qgis styleCategories=\"Symbology\" version=\"3.44.8-Solothurn\">\n"
@@ -1077,8 +1192,42 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
         )
 
     @staticmethod
-    def _qml_slope_embrapa() -> str:
-        """Retorna o template QML para o estilo Embrapa (porcentagem)."""
+    def _qml_slope_embrapa(categorico: bool = False) -> str:
+        """Retorna o template QML para o estilo Embrapa (porcentagem).
+
+        Args:
+            categorico: Se True, gera o QML com renderizador "paletted" (valores únicos).
+
+        Returns:
+            str: Conteúdo do arquivo de estilo QML formatado em XML.
+        """
+        if categorico:
+            return (
+                "<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>\n"
+                "<qgis styleCategories=\"Symbology\" version=\"3.44.8-Solothurn\">\n"
+                "  <pipe>\n"
+                "    <provider>\n"
+                "      <resampling zoomedOutResamplingMethod=\"nearestNeighbour\" maxOversampling=\"2\" enabled=\"false\" zoomedInResamplingMethod=\"nearestNeighbour\"/>\n"
+                "    </provider>\n"
+                "    <rasterrenderer nodataColor=\"\" alphaBand=\"-1\" band=\"1\" opacity=\"1\" type=\"paletted\">\n"
+                "      <rasterTransparency/>\n"
+                "      <colorPalette>\n"
+                "        <paletteEntry label=\"0% – 3% (Plano)\" color=\"#286fa4\" alpha=\"255\" value=\"1\"/>\n"
+                "        <paletteEntry label=\"3% - 8% (Suave ondulado)\" color=\"#a2f9d0\" alpha=\"255\" value=\"2\"/>\n"
+                "        <paletteEntry label=\"8% - 20% (Ondulado)\" color=\"#4cc64d\" alpha=\"255\" value=\"3\"/>\n"
+                "        <paletteEntry label=\"20% - 45% (Forte ondulado)\" color=\"#f1eb7a\" alpha=\"255\" value=\"4\"/>\n"
+                "        <paletteEntry label=\"45% - 75% (Montanhoso)\" color=\"#ffae5d\" alpha=\"255\" value=\"5\"/>\n"
+                "        <paletteEntry label=\"&gt; 75% (Escarpado)\" color=\"#b11011\" alpha=\"255\" value=\"6\"/>\n"
+                "      </colorPalette>\n"
+                "    </rasterrenderer>\n"
+                "    <brightnesscontrast brightness=\"0\" gamma=\"1\" contrast=\"0\"/>\n"
+                "    <huesaturation colorizeStrength=\"100\" invertColors=\"0\" colorizeBlue=\"128\" colorizeRed=\"255\" colorizeGreen=\"128\" colorizeOn=\"0\" grayscaleMode=\"0\" saturation=\"0\"/>\n"
+                "    <rasterresampler maxOversampling=\"2\"/>\n"
+                "  </pipe>\n"
+                "  <blendMode>0</blendMode>\n"
+                "</qgis>\n"
+            )
+
         return (
             "<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>\n"
             "<qgis styleCategories=\"Symbology\" version=\"3.44.8-Solothurn\">\n"
@@ -1108,8 +1257,46 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
         )
 
     @staticmethod
-    def _qml_slope_fao() -> str:
-        """Retorna o template QML para o estilo FAO (porcentagem)."""
+    def _qml_slope_fao(categorico: bool = False) -> str:
+        """Retorna o template QML para o estilo FAO (porcentagem).
+
+        Args:
+            categorico: Se True, gera o QML com renderizador "paletted" (valores únicos).
+
+        Returns:
+            str: Conteúdo do arquivo de estilo QML formatado em XML.
+        """
+        if categorico:
+            return (
+                "<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>\n"
+                "<qgis styleCategories=\"Symbology\" version=\"3.44.8-Solothurn\">\n"
+                "  <pipe>\n"
+                "    <provider>\n"
+                "      <resampling zoomedOutResamplingMethod=\"nearestNeighbour\" maxOversampling=\"2\" enabled=\"false\" zoomedInResamplingMethod=\"nearestNeighbour\"/>\n"
+                "    </provider>\n"
+                "    <rasterrenderer nodataColor=\"\" alphaBand=\"-1\" band=\"1\" opacity=\"1\" type=\"paletted\">\n"
+                "      <rasterTransparency/>\n"
+                "      <colorPalette>\n"
+                "        <paletteEntry label=\"0% – 0.2% (Flat)\" color=\"#82a4ff\" alpha=\"255\" value=\"1\"/>\n"
+                "        <paletteEntry label=\"0.2% – 0.5% (Level)\" color=\"#66bd63\" alpha=\"255\" value=\"2\"/>\n"
+                "        <paletteEntry label=\"0.5% – 1.0% (Nearly level)\" color=\"#a6d96a\" alpha=\"255\" value=\"3\"/>\n"
+                "        <paletteEntry label=\"1.0% – 2.0% (Very gently sloping)\" color=\"#d9ef8b\" alpha=\"255\" value=\"4\"/>\n"
+                "        <paletteEntry label=\"2% – 5% (Gently sloping)\" color=\"#ffffbf\" alpha=\"255\" value=\"5\"/>\n"
+                "        <paletteEntry label=\"5% – 10% (Sloping)\" color=\"#fee08b\" alpha=\"255\" value=\"6\"/>\n"
+                "        <paletteEntry label=\"10% – 15% (Strongly sloping)\" color=\"#fdae61\" alpha=\"255\" value=\"7\"/>\n"
+                "        <paletteEntry label=\"15% – 30% (Moderately steep)\" color=\"#f46d43\" alpha=\"255\" value=\"8\"/>\n"
+                "        <paletteEntry label=\"30% – 60% (Steep)\" color=\"#d73027\" alpha=\"255\" value=\"9\"/>\n"
+                "        <paletteEntry label=\"&gt; 60% (Very steep)\" color=\"#7f0000\" alpha=\"255\" value=\"10\"/>\n"
+                "      </colorPalette>\n"
+                "    </rasterrenderer>\n"
+                "    <brightnesscontrast brightness=\"0\" gamma=\"1\" contrast=\"0\"/>\n"
+                "    <huesaturation colorizeStrength=\"100\" invertColors=\"0\" colorizeBlue=\"128\" colorizeRed=\"255\" colorizeGreen=\"128\" colorizeOn=\"0\" grayscaleMode=\"0\" saturation=\"0\"/>\n"
+                "    <rasterresampler maxOversampling=\"2\"/>\n"
+                "  </pipe>\n"
+                "  <blendMode>0</blendMode>\n"
+                "</qgis>\n"
+            )
+
         return (
             "<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>\n"
             "<qgis styleCategories=\"Symbology\" version=\"3.44.8-Solothurn\">\n"

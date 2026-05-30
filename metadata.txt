@@ -5,8 +5,8 @@ name=Fluxo Topográfico
 qgisMinimumVersion=3.16
 qgisMaximumVersion=4.99
 description=Pipeline de processamento e streaming de dados do MDE ANADEM v1 via vsicurl para recortes, curvas de nível e declividade
-version=1.1.0
-author=Clayton Igarashi
+version=1.2.0
+author=Clayton Igarashi / Plat. Geo e Inovação
 email=geoigarashi@gmail.com
 
 about=Plugin para processamento e streaming do Modelo Digital de Elevação ANADEM v1 (resolução 30m, cobertura Brasil) a partir de uma área de interesse definida pelo usuário. Os tiles são selecionados pelo índice MGRS local (sem internet para a busca) de forma contínua direta da nuvem via vsicurl. Saídas disponíveis: MDE com rampa de cores hipsométrica, Curvas de Nível com suavização TPI-ponderada e simbologia com curvas mestras/normais, raster de Declividade Temática (estilos CAR, Embrapa, FAO), ou ambas. Inclui overlay opcional de Hillshade.
@@ -15,6 +15,10 @@ tracker=
 repository=https://github.com/geoigarashi/anadem-downloader-qgis.git
 hasProcessingProvider=yes
 changelog=
+    Versão 1.2.0
+    - Adicionado suporte a geração de raster de Declividade Categórica reclassificada com simbologia paletizada
+    - Agrupamento automático das camadas resultantes em um grupo dedicado da legenda do QGIS
+    - Integração de logotipos e créditos da equipe Plat. Geo e Inovação
     Versão 1.1.0
     - Adicionado suporte a geração de raster de Declividade Temática (CAR, Embrapa e FAO)
     Versão 1.0.0

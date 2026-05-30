@@ -1,9 +1,14 @@
 # Fluxo Topográfico
 
+<p align="center">
+  <img src="icon.png" alt="Ícone Fluxo Topográfico" height="120" style="vertical-align: middle; margin-right: 30px;">
+  <img src="Logo-GEO-HQ.svg" alt="Logotipo Plataforma Geo e Inovação" height="120" style="vertical-align: middle;">
+</p>
+
 > Plugin de processamento QGIS para processamento e streaming de dados do MDE ANADEM v1 (30 m, Brasil) via vsicurl.
 
 ![QGIS](https://img.shields.io/badge/QGIS-3.16%20–%204.x-green?logo=qgis&logoColor=white)
-![Versão](https://img.shields.io/badge/versão-1.1.0-blue)
+![Versão](https://img.shields.io/badge/versão-1.2.0-blue)
 ![Licença](https://img.shields.io/badge/licença-MIT-lightgrey)
 ![Python](https://img.shields.io/badge/Python-3.9%2B-yellow?logo=python&logoColor=white)
 
@@ -99,4 +104,4 @@ Distribuído sob a licença **MIT**. Consulte o arquivo `LICENSE` para detalhes.
 
 ---
 
-*Desenvolvido por [Clayton Igarashi](mailto:geoigarashi@gmail.com)*
+* **Equipe de Desenvolvimento:** [Clayton Igarashi](mailto:geoigarashi@gmail.com) & [Plat. Geo e Inovação](https://github.com/geoigarashi)
