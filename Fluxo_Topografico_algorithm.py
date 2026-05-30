@@ -968,8 +968,8 @@ class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
         logo_path = os.path.join(os.path.dirname(__file__), 'Logo-GEO-HQ.svg').replace('\\', '/')
         return (
             f'<p align="center">'
-            f'<img src="file:///{icon_path}" height="72" style="vertical-align: middle; margin-right: 20px;"/>'
-            f'<img src="file:///{logo_path}" height="72" style="vertical-align: middle;"/>'
+            f'<img src="file:///{icon_path}" height="100" style="vertical-align: middle; margin-right: 20px;"/>'
+            f'<img src="file:///{logo_path}" height="100" style="vertical-align: middle;"/>'
             f'</p>'
             + self.tr(
                 'Baixa tiles do MDE ANADEM v1 (30m, Brasil) para uma área de '
