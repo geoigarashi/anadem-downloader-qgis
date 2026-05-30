@@ -12,16 +12,16 @@ email=geoigarashi@gmail.com
 about=Plugin para download automático do Modelo Digital de Elevação ANADEM v1 (resolução 30m, cobertura Brasil) a partir de uma área de interesse definida pelo usuário. Os tiles são selecionados pelo índice MGRS local (sem internet para a busca) e baixados apenas quando necessários, com cache em disco para reutilização. Saídas disponíveis: MDE com rampa de cores hipsométrica, Curvas de Nível com suavização TPI-ponderada e simbologia com curvas mestras/normais, raster de Declividade Temática (estilos CAR, Embrapa, FAO, USDA), ou ambas. Inclui overlay opcional de Hillshade.
 
 tracker=
-repository=
+repository=https://github.com/geoigarashi/anadem-downloader-qgis.git
 hasProcessingProvider=yes
 changelog=
     Versão 1.1.0
-    - Adicionado suporte a geração de raster de Declividade Temática (CAR, Embrapa, FAO, USDA)
+    - Adicionado suporte a geração de raster de Declividade Temática (CAR, Embrapa e FAO)
     Versão 1.0.0
     - Lançamento inicial
 
 tags=python, gdal, dem, mde, anadem, elevação, raster, curva de nivel, altimetria, brasil
-homepage=
+homepage=https://github.com/geoigarashi/anadem-downloader-qgis
 category=Raster
 icon=icon.png
 experimental=False

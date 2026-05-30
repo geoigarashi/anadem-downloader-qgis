@@ -3,7 +3,7 @@
 > Plugin de processamento QGIS para download e estilização automática do MDE ANADEM v1 (30 m, Brasil).
 
 ![QGIS](https://img.shields.io/badge/QGIS-3.16%20–%204.x-green?logo=qgis&logoColor=white)
-![Versão](https://img.shields.io/badge/versão-1.0.0-blue)
+![Versão](https://img.shields.io/badge/versão-1.1.0-blue)
 ![Licença](https://img.shields.io/badge/licença-MIT-lightgrey)
 ![Python](https://img.shields.io/badge/Python-3.9%2B-yellow?logo=python&logoColor=white)
 
@@ -27,10 +27,12 @@ Em vez de baixar tiles completos de centenas de megabytes, o plugin faz **stream
 ### Processamento
 - **Reprojeção UTM automática** — calcula o centróide da AOI, detecta o fuso UTM SIRGAS 2000 correspondente e reprojeta por interpolação bilinear antes de processar os derivativos topográficos.
 - **Suavização TPI-ponderada** — mitiga o efeito serrilhado nas curvas de nível usando o Topographic Position Index acoplado a filtros Gaussianos (kernels 3×3, 7×7 ou 13×13). Áreas planas recebem maior suavização; cristas e vales preservam suas feições estruturais.
+- **Cálculo de Declividade** — calcula dinamicamente a declividade do terreno com base nas unidades métricas do raster UTM utilizando o algoritmo `gdaldem slope` integrado.
 
 ### Simbologia Automática
 - **MDE hipsométrico** — rampa de cores gerada dinamicamente com base nas estatísticas reais de elevação do recorte + overlay Hillshade em modo de mistura *Multiply*.
 - **Curvas de nível** — renderização por regras com distinção automática entre curvas mestras (0,50 mm + rótulos a cada 5 intervalos) e normais (0,25 mm); rótulos com máscara de buffer para legibilidade cartográfica.
+- **Declividade temática** — aplicação de simbologia temática discreta e contínua baseada em padrões ambientais reconhecidos: FAO (%), Embrapa (%) e CAR (graus, destacando áreas de APP &gt; 45°).
 
 ---
 
@@ -46,6 +48,8 @@ Em vez de baixar tiles completos de centenas de megabytes, o plugin faz **stream
 | **Cor das curvas de nível** | Color | Paleta aplicada às linhas vetoriais e rótulos cartográficos. |
 | **Reprojetar projeto para UTM** | Boolean | Altera o CRS do projeto QGIS para o EPSG UTM métrico detectado. |
 | **Autenticação de Proxy** | AuthConfig | Credenciais do gerenciador de autenticação QGIS para redes corporativas. |
+| **Criar raster de declividade** | Boolean | Computa e gera o raster de declividade a partir do MDE baixado. |
+| **Simbologia e unidade da declividade** | Enum | Classificação aplicada ao raster de declividade: `Sem estilo`, `Declividade FAO (%)`, `Declividade Embrapa (%)` ou `Declividade CAR (°)`. |
 
 ---
 
