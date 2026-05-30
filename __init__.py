@@ -15,5 +15,5 @@
 
 
 def classFactory(iface):
-    from .ANADEM_Downloader import ANADEMDownloaderPlugin
-    return ANADEMDownloaderPlugin(iface)
+    from .Fluxo_Topografico import FluxoTopograficoPlugin
+    return FluxoTopograficoPlugin(iface)

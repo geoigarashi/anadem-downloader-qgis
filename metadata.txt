@@ -1,15 +1,15 @@
 # This file contains metadata for your plugin.
 
 [general]
-name=ANADEM Downloader
+name=Fluxo Topográfico
 qgisMinimumVersion=3.16
 qgisMaximumVersion=4.99
-description=Baixa o MDE ANADEM v1 (30m) para uma área de interesse no território brasileiro e gera declividade
+description=Pipeline de processamento e streaming de dados do MDE ANADEM v1 via vsicurl para recortes, curvas de nível e declividade
 version=1.1.0
 author=Clayton Igarashi
 email=geoigarashi@gmail.com
 
-about=Plugin para download automático do Modelo Digital de Elevação ANADEM v1 (resolução 30m, cobertura Brasil) a partir de uma área de interesse definida pelo usuário. Os tiles são selecionados pelo índice MGRS local (sem internet para a busca) e baixados apenas quando necessários, com cache em disco para reutilização. Saídas disponíveis: MDE com rampa de cores hipsométrica, Curvas de Nível com suavização TPI-ponderada e simbologia com curvas mestras/normais, raster de Declividade Temática (estilos CAR, Embrapa, FAO, USDA), ou ambas. Inclui overlay opcional de Hillshade.
+about=Plugin para processamento e streaming do Modelo Digital de Elevação ANADEM v1 (resolução 30m, cobertura Brasil) a partir de uma área de interesse definida pelo usuário. Os tiles são selecionados pelo índice MGRS local (sem internet para a busca) de forma contínua direta da nuvem via vsicurl. Saídas disponíveis: MDE com rampa de cores hipsométrica, Curvas de Nível com suavização TPI-ponderada e simbologia com curvas mestras/normais, raster de Declividade Temática (estilos CAR, Embrapa, FAO), ou ambas. Inclui overlay opcional de Hillshade.
 
 tracker=
 repository=https://github.com/geoigarashi/anadem-downloader-qgis.git

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-ANADEM Downloader — algoritmo principal.
+Fluxo Topográfico — algoritmo principal.
 
 Fluxo:
   1. Identifica tiles MGRS que intersectam a área de interesse (sem internet).
@@ -64,7 +64,7 @@ SAIDA_AMBOS = 2
 AREA_MAXIMA_KM2 = 10000
 
 
-class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
+class FluxoTopograficoAlgorithm(QgsProcessingAlgorithm):
 
     AREA_INTERESSE = 'AREA_INTERESSE'
     SAIDA = 'SAIDA'
@@ -79,7 +79,7 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
 
     def __init__(self):
         super().__init__()
-        self.temp_dir = os.path.join(tempfile.gettempdir(), 'ANADEM_Downloader')
+        self.temp_dir = os.path.join(tempfile.gettempdir(), 'Fluxo_Topografico')
         self.status_total = 0.0
         self.progresso = 0.0
         self._plugin_dir = os.path.dirname(__file__)
@@ -929,10 +929,10 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
         return super().icon()
 
     def name(self):
-        return 'ANADEM Downloader'
+        return 'fluxotopografico'
 
     def displayName(self):
-        return self.tr(self.name())
+        return self.tr('Fluxo Topográfico')
 
     def group(self):
         return self.tr(self.groupId())
@@ -1143,4 +1143,4 @@ class ANADEMDownloaderAlgorithm(QgsProcessingAlgorithm):
         )
 
     def createInstance(self):
-        return ANADEMDownloaderAlgorithm()
+        return FluxoTopograficoAlgorithm()

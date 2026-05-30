@@ -1,6 +1,6 @@
-# ANADEM Downloader
+# Fluxo Topográfico
 
-> Plugin de processamento QGIS para download e estilização automática do MDE ANADEM v1 (30 m, Brasil).
+> Plugin de processamento QGIS para processamento e streaming de dados do MDE ANADEM v1 (30 m, Brasil) via vsicurl.
 
 ![QGIS](https://img.shields.io/badge/QGIS-3.16%20–%204.x-green?logo=qgis&logoColor=white)
 ![Versão](https://img.shields.io/badge/versão-1.1.0-blue)
@@ -11,7 +11,7 @@
 
 ## Visão Geral
 
-O **ANADEM Downloader** é um algoritmo de processamento (`QgsProcessingAlgorithm`) que automatiza todo o fluxo de trabalho com o MDE ANADEM v1 — da identificação de tiles até a simbologia cartográfica final — para qualquer área de interesse (AOI) no território brasileiro.
+O **Fluxo Topográfico** é um algoritmo de processamento (`QgsProcessingAlgorithm`) que automatiza todo o fluxo de trabalho com o MDE ANADEM v1 — da identificação de tiles até a simbologia cartográfica final — para qualquer área de interesse (AOI) no território brasileiro.
 
 Em vez de baixar tiles completos de centenas de megabytes, o plugin faz **streaming seletivo via HTTP range requests** (COG/vsicurl), lendo apenas a sub-região que intersecta a AOI.
 
@@ -59,8 +59,8 @@ Em vez de baixar tiles completos de centenas de megabytes, o plugin faz **stream
 2. No QGIS, vá em **Complementos → Gerenciar e Instalar Complementos**.
 3. Escolha **Instalar a partir de ZIP**, aponte para o arquivo baixado e confirme.
 4. O algoritmo ficará disponível em:
-   - **Caixa de Ferramentas de Processamento** → grupo *ANADEM Downloader*
-   - **Complementos → Ferramentas Geo → ANADEM Downloader**
+   - **Caixa de Ferramentas de Processamento** → grupo *Fluxo Topográfico*
+   - **Complementos → Ferramentas Geo → Fluxo Topográfico**
 
 > **Requisitos:** QGIS ≥ 3.16 · GDAL com suporte a vsicurl (instalação padrão OSGeo4W)
 
